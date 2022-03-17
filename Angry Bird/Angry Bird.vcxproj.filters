@@ -18,49 +18,5 @@
     <ClCompile Include="Angry Bird.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Object.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Ground.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Animals.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="DrawObj.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="init.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="RedBirds.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="head.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Object.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Ground.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Animals.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Knock.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="tools.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="DrawObj.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="RedBirds.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

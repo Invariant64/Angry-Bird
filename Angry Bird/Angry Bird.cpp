@@ -1,26 +1,346 @@
-﻿#include "head.h"
+﻿#include <graphics.h>
 #include <cstring>
 #include <conio.h>
 #include <iostream>
 #include <wchar.h>
 #include <fstream>
+#include <algorithm>
+#include <cmath>
 
 using namespace std;
 
-const int Screen_L = 1000;
-const int Screen_H = 600;
+const float PI = 3.14159265359f;
 
+const int Screen_L = 1000;				//窗口长度
+const int Screen_H = 600;				//窗口宽度
 
-const wchar_t* GetWC(const char* c) {
+const float GravitySpeedChange = 0.07f;	//Animal在空中时重力对其的速度影响
+
+const float GroundKnockReduce_K = 0.9f;	//Animal与Ground发生碰撞的速度衰减系数
+const float GroundRollReduce_K = 0.8f;	//Animal在Ground上滚动的速度衰减系数
+const float AnimalKnockReduce_K = 0.7f;	//Animal相互发生碰撞的速度衰减系数
+
+const float Delta = 10.0f;				//Animal在检查碰撞时的允许误差范围
+const float touchGroundDelta = 5.0f;
+const float SpeedToZero = 0.05f;		//Animal的速度降为0的临界值
+
+enum DRCT {								//表示Animal与Ground碰撞时Animal位于Ground的方向
+	NOTTOUCHING, LEFT, TOP, RIGHT, DOWN
+};
+
+const wchar_t* GetWC(const char* c) {	//将 char* 转为 wchat_t*
 	const size_t cSize = strlen(c) + 1;
 	wchar_t* wc = new wchar_t[cSize];
 	mbstowcs(wc, c, cSize);
-
 	return wc;
 }
 
 
-struct Text {
+class Ground {
+private:	
+	wchar_t* picAddress;
+	IMAGE img;
+public:
+	int left, top, right, down;
+
+	Ground() {}
+
+	Ground(int x1, int y1, int x2, int y2, wchar_t* ad) {
+		left = x1, top = y1, right = x2, down = y2;
+		picAddress = ad;
+		
+		if (picAddress) {
+			loadimage(&img, picAddress, right - left, down - top, true);
+		}
+	}
+
+	void draw() {
+		if (picAddress) {
+			putimage(left, top, &img, SRCCOPY);
+		}
+		else {
+			setfillcolor(BLUE);
+			setlinecolor(RED);
+			fillrectangle(left, top, right, down);
+		}
+	}
+};
+
+class Animal {
+private:
+	int size;			//将动物视为一个圆，其半径
+	float p_x, p_y;		//圆心坐标
+	float v_x, v_y;		//线速度
+	float v_r;			//旋转速度 设定顺时针为正向
+	Ground* is_on;		//正在哪个Ground上，不在时为NULL
+	bool is_rolling;	//是否正在滚动（v_y=0）
+
+	wchar_t* pic1Address, * pic2Address;
+	wchar_t* pic11Address, * pic21Address;
+
+	IMAGE img1, img2;
+	IMAGE img11, img21;
+
+public:
+	Animal() {}
+
+	Animal(int s, float px, float py, float vx, float vy, float vr, wchar_t* pic1, wchar_t* pic2) {
+		size = s;
+		p_x = px, p_y = py;
+		v_x = vx, v_y = vy;
+		v_r = vr;
+
+		is_rolling = false;
+
+		is_on = NULL;
+
+		pic1Address = pic1;
+		pic2Address = pic2;
+
+		if (pic1Address) {
+			loadimage(&img1, pic1Address, size * 2, size * 2, true);
+		}
+		if (pic2Address) {
+			loadimage(&img2, pic2Address, size * 2, size * 2, true);
+		}
+	}
+
+	Animal(int s, float px, float py, float vx, float vy, float vr, wchar_t* pic1, wchar_t* pic2, wchar_t* pic11, wchar_t* pic21) {
+		size = s;
+		p_x = px, p_y = py;
+		v_x = vx, v_y = vy;
+		v_r = vr;
+
+		is_rolling = false;
+
+		is_on = NULL;
+
+		pic1Address = pic1;
+		pic2Address = pic2;
+		pic11Address = pic11;
+		pic21Address = pic21;
+
+		if (pic1Address) {
+			loadimage(&img1, pic1Address, size * 2, size * 2, true);
+		}
+		if (pic2Address) {
+			loadimage(&img2, pic2Address, size * 2, size * 2, true);
+		}
+
+		if (pic11Address) {
+			loadimage(&img11, pic11Address, size * 2, size * 2, true);
+		}
+		if (pic21Address) {
+			loadimage(&img21, pic21Address, size * 2, size * 2, true);
+		}
+	}
+
+	void move() {
+		p_x += v_x;
+		p_y += v_y;
+	}
+
+	void setSpeed(float vx, float vy) {			//设置速度
+		v_x = vx;
+		v_y = vy;
+	}
+
+	void addSpeed(float dvx, float dvy) {		//以速度的增量设置速度
+		v_x += dvx;
+		v_y += dvy;
+	}
+
+	void getIsOn(Ground* grd, int n_grd) {		//获取Animal现在在下方最近的Ground
+		if (grd == NULL) {
+			return;
+		}
+		Ground* closest = NULL;
+		//cout << "grd[1]" << (grd + 3)->top << endl;
+		int miny = 1000;
+		for (int i = 1; i < n_grd; i++) {
+			if (p_x + size >= (grd + i)->left && p_x - size <= (grd + i)->right && abs((grd + i)->top - p_y - size) <= 5.0f && (grd + i)->top < miny) {
+				closest = grd + i;
+				miny = closest->top;
+				if ((grd + i)->top == 400) {
+					//Sleep(200);
+				}
+			}
+		}
+		if (closest) {
+			is_on = closest;
+			cout << "is_on.top = " << is_on->top << endl;
+		}
+		else {
+			is_on = NULL;
+		}
+	}
+
+	void checkIsOn() {				//检查目前的is_on是否位于Animal下方
+		if (is_on == NULL) {
+			is_rolling = false;
+			return;
+		}
+		if (p_x - size < is_on->left || p_x + size > is_on->right) {
+			is_on = NULL;
+			is_rolling = false;
+		}
+		else {
+			cout << (p_x - size >= is_on->left) << ' ' << (p_x + size <= is_on->right) << ' ' << (abs(is_on->top - p_y - size) <= 10.0f) << ' ' << (abs(v_y) <= SpeedToZero) << endl;
+			cout << v_y << ' ' << is_on->top << ' ' << p_y << ' ' << is_on->top - p_y - size << endl;
+			if (abs(is_on->top - p_y - size) <= 10.0f) {
+				//Sleep(1000);
+			}
+			if (is_on && p_x - size >= is_on->left && p_x + size <= is_on->right && abs(is_on->top - p_y - size) <= 5.0f && abs(v_y) <= 0.5f) {
+				is_rolling = true;
+				cout << "is rolling!" << endl;
+			}
+		}
+	}
+
+	void changeSpeed() {						//根据目前的状态改变速度
+		if (is_rolling) {
+			v_x *= GroundRollReduce_K;
+			p_y = is_on->top - size;
+			v_y = 0;
+
+			if (abs(v_x) <= SpeedToZero) {
+				v_x = 0;
+			}
+		}
+		else {
+			v_y += GravitySpeedChange;
+		}
+	}
+
+	void draw() {
+		if (pic1Address) {
+			IMAGE i1;
+			if (v_x > 0) {
+				rotateimage(&i1, &img1, -atan(v_y / v_x), WHITE, true);
+			}
+			else if(v_x > 0) {
+				rotateimage(&i1, &img11, -atan(v_y / v_x), WHITE, true);
+			}
+			else {
+				rotateimage(&i1, &img11, 0, WHITE, true);
+			}
+			putimage(p_x - size, p_y - size, &i1, SRCCOPY);
+		}
+		if (pic2Address) {
+			IMAGE i2;
+			if (v_x < 0) {
+				rotateimage(&i2, &img2, -atan(v_y / v_x), WHITE, true);
+			}
+			else if(v_x > 0) {
+				rotateimage(&i2, &img21, -atan(v_y / v_x), WHITE, true);
+			}
+			else {
+				rotateimage(&i2, &img21, 0, WHITE, true);
+			}
+			putimage(p_x - size, p_y - size, &i2, SRCCOPY);
+		}
+		if (is_rolling) {
+			cout << p_x << ' ' << p_y << endl;
+		}
+	}
+
+	void knockAnimal(Animal* anm) {				//与另一Animal发生碰撞	
+		float r = sqrt((p_x - anm->p_x) * (p_x - anm->p_x) + (p_y - anm->p_y) * (p_y - anm->p_y));
+		if (r <= size + anm->size + Delta) {
+			float vtx, vty;
+			vtx = v_x, vty = v_y;
+			v_x = anm->v_x;
+			v_y = anm->v_y;
+
+			anm->v_x = vtx;
+			anm->v_y = vty;
+
+			v_x *= AnimalKnockReduce_K;
+			v_y *= AnimalKnockReduce_K;
+			anm->v_x *= AnimalKnockReduce_K;
+			anm->v_y *= AnimalKnockReduce_K;
+
+			//cout << "KNOCKING!" << endl;
+		}
+	}
+
+	void knockGround(Ground grd) {				//与Ground发生碰撞
+		/*
+		if (abs(grd.left - p_x - size) <= Delta && p_y - size <= grd.down && p_y + size >= grd.top) {
+			v_x = -v_x;
+			cout << "left:" << p_x << ' ' << p_y << endl;
+		}
+		else if (abs(grd.top - p_y - size) <= Delta && p_x - size <= grd.right && p_x + size >= grd.left) {
+			v_y = -v_y;
+			cout << "top:" << p_x << ' ' << p_y << endl;
+		}
+		else if (abs(p_x - grd.right - size) <= Delta && p_y - size <= grd.down && p_y + size >= grd.top) {
+			v_x = -v_x;
+			cout << "right:" << p_x << ' ' << p_y << endl;
+		}
+		else if (abs(p_y - grd.down - size) <= Delta && p_x - size <= grd.right && p_x + size >= grd.left) {
+			v_y = -v_y;
+			cout << "down:" << p_x << ' ' << p_y << endl;
+		}
+		else {
+			return;
+		}*/
+		
+		if (p_x + size >= grd.left - Delta && p_x + size < grd.left && p_y - size <= grd.down && p_y + size >= grd.top && v_x > 0) {
+			v_x = -v_x;
+			//cout << "left:" << p_x << ' ' << p_y << endl;
+		}
+		else if (grd.top - p_y - size <= Delta && grd.top - p_y - size > 0 && p_x - size <= grd.right && p_x + size >= grd.left && v_y > 0) {
+			v_y = -v_y;
+			cout << "top:" << p_x << ' ' << p_y << endl;
+		}
+		else if (p_x - grd.right - size <= Delta && p_x - grd.right - size > 0 && p_y - size <= grd.down && p_y + size >= grd.top && v_x < 0) {
+			v_x = -v_x;
+			//cout << "right:" << p_x << ' ' << p_y << endl;
+		}
+		else if (p_y - grd.down - size <= Delta && p_y - grd.down - size > 0 && p_x - size <= grd.right && p_x + size >= grd.left && v_y < 0) {
+			v_y = -v_y;
+			//cout << "down:" << p_x << ' ' << p_y << endl;
+		}
+		else {
+			return;
+		}
+
+		v_x *= GroundKnockReduce_K;
+		v_y *= GroundKnockReduce_K;
+	}
+
+	bool checkAnimalKnock(Animal anm) {			//检查是否与某Animal发生碰撞
+		float r = sqrt((p_x - anm.p_x) * (p_x - anm.p_x) + (p_y - anm.p_y) * (p_y - anm.p_y));
+		if (r <= size + anm.size + Delta) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	DRCT checkGroundKnock(Ground grd) {			//检查是否与某Ground发生碰撞，并返回与Ground碰撞的方向
+		if (grd.left - p_x <= size + Delta || grd.left - p_x >= size - Delta) {
+			return LEFT;
+		}
+		if (grd.top - p_y <= size + Delta || grd.top - p_y >= size - Delta) {
+			return TOP;
+		}
+		if (p_x - grd.right <= size + Delta || p_x - grd.right >= size - Delta) {
+			return RIGHT;
+		}
+		if (p_y - grd.down <= size + Delta || p_y - grd.down >= size - Delta) {
+			return DOWN;
+		}
+		return NOTTOUCHING;
+	}
+
+};
+
+
+class Text {
+private:
 	LPCTSTR body;
 	LPCTSTR ti;
 	int color;
@@ -28,7 +348,7 @@ struct Text {
 	int x1, y1, x2, y2;
 	RECT r;
 	unsigned int MODE;
-
+public:
 	Text(
 		LPCTSTR b,
 		LPCTSTR t,
@@ -251,133 +571,47 @@ public:
 		}
 		return false;
 	}
-	
 };
 
-
-void Knock(Animals *anm, Ground grd) {
-	//if (anm.x >= grd.p[0].x && anm.x <= grd.p[1].x && (abs(anm.y - grd.p[0].y) <= 1 || abs(anm.y - grd.p[3].y) <= 1))
-	//	anm.v_y = -anm.v_y * REDUCE_K;
-	//if (anm.y >= grd.p[3].y && anm.y <= grd.p[0].y && (abs(anm.x - grd.p[0].x) <= 1 || abs(anm.x - grd.p[3].x) <= 1))
-	//	anm.v_x = -anm.v_x * REDUCE_K;
-	//outtextxy(0, 0, 'Y');
-	anm->v_y = -anm->v_y * 0.9;
-	if (anm->v_y < 0.1) {
-		anm->y = grd.p[0].y - anm->r;
-	}
-	//while(1){}
-}
-
-void welcome();
-
-int main() {
-
-	welcome();
-
-	//while(1){}
-
-	//initgraph(1000, 500);
-	//BeginBatchDraw();
-	int key = 0;
-
-	RedBirds rd[5];
-	Ground grd[5];
-	grd[1] = Ground(0, 250, 1000, 250, 0, 500, 1000, 500);
-	grd[2] = Ground(0, 50, 100, 50, 0, 70, 100, 70);
-	//rd1 = RedBirds();
-
-	rd[1] = RedBirds(15, 0, 20, 15, 10000, 0, 0);
-	rd[2] = RedBirds(-3, 0, 50, 15, 10000, 500, 100);
-
-	//rd[1] = RedBirds(1, 0, 20, 15, 10000, 0, 0);
-	//rd[2] = RedBirds(-3, 0, 50, 15, 10000, 500, 100);
-
-	//rd1.drawObj(1, 1);
-	//IMAGE img;
-	//loadimage(&img, _T("redbird.jpeg"));
-	//putimage(100, 100, &img);
-
-	//rd1.draw();
-
-	setfillcolor(BLUE);
-	
-	char c = 'Y';
-
-	while (1) {
-		key++;
-		cleardevice();
-
-		/*
-		if (rd1.isTouchGrd(grd2)) {
-			if (rd1.key % 3 == 0) {
-				//return 0;
-				Knock(&rd1, grd2);
-				//Knock(&rd1, grd)
-				//Sleep(1000);
-				//
-			}
-
-
-		}
-
-		*/
-		//rd1.key++;
-
-		for (int i = 1; i <= 2; i++) {
-			rd[i].speedChange();
-			rd[i].move();
-		}
-
-		for (int j = 1; j <= 2; j++) {
-			for (int i = 1; i <= 2; i++) {
-				if (rd[j].isTouchGrd(&grd[i])) {
-					//rd[j].nearGrd = &grd[i];
-					Knock(&rd[j], grd[i]);
-				
-				}
-			}
-		}
-
-		for (int i = 1; i <= 2; i++) {
-			for (int j = 1; j < 2; j++) {
-				if (rd[i].isTouchAnm(&rd[j])) {
-					//return 0;
-					rd[i].AnmKnock(&rd[j]);
-				}
-			}
-		}
-
-
-		if (rd[2].isRolling) {
-			outtextxy(0, 0, 'Y');
-		}
-
-		for (int i = 1; i <= 2; i++) {
-			grd[i].draw();
-		}
-
-		for (int i = 1; i <= 2; i++) {
-			rd[i].draw();
-		}
-
-		//rd1.draw();
-		FlushBatchDraw();
-		Sleep(20);
-	}
-
-	return 0;
-}
-
-//TextBox user_name_box = TextBox();
-//TextBox user_code_box = TextBox();
 
 TextBox user_name_box = TextBox(400, 210, 670, 260, 12, false);
 TextBox user_code_box = TextBox(400, 280, 670, 330, 12, true);
 
-int checkAccount(wchar_t* input_name, wchar_t* input_code);
-
 Button log_in_btn;
 Button rgs_act_btn;
+
+
+int checkAccount(wchar_t* input_name, wchar_t* input_code) {
+	FILE* user_info;
+	char* user_name, * user_code;
+
+	user_info = fopen("./data/user_info.txt", "r");
+
+	//fscanf(user_info, "%s %s", user_name, user_code);
+
+	user_name = new char[50];
+	user_code = new char[50];
+
+	while (fscanf(user_info, "%s %s", user_name, user_code) != EOF) {
+		const wchar_t* wname, * wcode;
+
+		wname = GetWC(user_name);
+		wcode = GetWC(user_code);
+
+		if (wcscmp(input_name, wname) == 0) {
+			if (wcscmp(input_code, wcode) == 0) {
+				fclose(user_info);
+				return 1;
+			}
+			else {
+				fclose(user_info);
+				return 0;
+			}
+		}
+	}
+	fclose(user_info);
+	return 2;
+}
 
 bool log_in_btn_Click() {
 	wchar_t* wname, * wcode;
@@ -399,7 +633,7 @@ bool log_in_btn_Click() {
 		MessageBox(NULL, TEXT("Your password is wrong! Please try again."), TEXT("Error"), 0);
 		return false;
 	case 1:  //there exists the account and the password is also correct
-		MessageBox(NULL, TEXT("Welcome!"), TEXT("Welcome"), 0);
+		//MessageBox(NULL, TEXT("Welcome!"), TEXT("Welcome"), 0);
 		return true;
 	case 2:  //there exists the account but the password is worng
 		MessageBox(NULL, TEXT("You have no account! Please register one."), TEXT("Error"), 0);
@@ -437,7 +671,7 @@ bool rgs_act_btn_Click() {
 		fclose(fp);
 
 		MessageBox(NULL, TEXT("Successfully registered!"), TEXT("Success"), 0);
-		
+
 		return true;
 	}
 	else {
@@ -466,7 +700,7 @@ void welcome() {
 	settextstyle(70, 0, _T("微软雅黑"));
 	RECT title = { 333, 100, 666, 300 };
 	drawtext(_T("愤怒的小鸟"), &title, DT_CENTER);
-	
+
 	settextcolor(BLACK);
 	settextstyle(30, 0, _T("微软雅黑"));
 	RECT touch_to_start = { 450, 500, 550, 600 };
@@ -487,7 +721,7 @@ void welcome() {
 	closegraph();
 
 
-	initgraph(Screen_L, Screen_H);
+	initgraph(Screen_L, Screen_H, SHOWCONSOLE);
 	setbkmode(TRANSPARENT);
 
 	putimage(0, 0, Screen_L, Screen_H, &welcome_background, 0, 0);
@@ -527,7 +761,7 @@ void welcome() {
 	Button log_in_btn = Button(350, 365, 650, 405, log_in_btn_Click, L"登录");
 	Button rgs_act_btn = Button(350, 415, 650, 455, rgs_act_btn_Click, L"注册");
 
-	while(true){
+	while (true) {
 
 		msg = getmessage(EM_MOUSE);
 
@@ -544,7 +778,7 @@ void welcome() {
 		setfillcolor(LIGHTGRAY);
 		if (msg.x >= 400 && msg.x <= 670 && msg.y >= 280 && msg.y <= 330){
 			setfillcolor(0xeeeeee);
-			
+
 		}
 		fillrectangle(400, 280, 670, 330);
 
@@ -555,43 +789,175 @@ void welcome() {
 		}
 		fillrectangle(400, 210, 670, 260);
 
-		
+
 		peekmessage(NULL, EM_MOUSE | EM_CHAR);*/
-		
+
 		//FlushBatchDraw();
 	}
 
 }
 
+void playing() {
+	cleardevice();
 
-int checkAccount(wchar_t* input_name, wchar_t* input_code) {
-	FILE *user_info;
-	char* user_name, * user_code;
+	int groundNumber, animalNumber;
 
-	user_info = fopen("./data/user_info.txt", "r");
+	groundNumber = 5;
+	animalNumber = 3;
+
+	Ground grd[6];
+	Animal anm[5];
+
+	grd[0] = Ground(0, 400, 500, 500, NULL);
+	grd[1] = Ground(0, 200, 300, 240, NULL);
+	grd[2] = Ground(700, 400, 1000, 500, NULL);
+	grd[3] = Ground(360, 0, 370, 200, NULL);
 	
-	//fscanf(user_info, "%s %s", user_name, user_code);
 
-	user_name = new char[50];
-	user_code = new char[50];
-	
-	while (fscanf(user_info, "%s %s", user_name, user_code) != EOF) {
-		const wchar_t* wname, * wcode;
+	anm[0] = Animal(20, 30, 150, 3, 0, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL);
+	anm[1] = Animal(20, 600, 200, -2, 0, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL);
+	anm[2] = Animal(20, 550, 100, 2.5f, -1, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL);
 
-		wname = GetWC(user_name);
-		wcode = GetWC(user_code);
 
-		if (wcscmp(input_name, wname) == 0) {
-			if (wcscmp(input_code, wcode) == 0) {
-				fclose(user_info);
-				return 1;
+	for (int i = 0; i < groundNumber; i++) {
+		grd[i].draw();
+	}
+
+	for (int i = 0; i < animalNumber; i++) {
+		anm[i].draw();
+	}
+
+	//while(1){}
+
+	BeginBatchDraw();
+
+	while(true){
+		cleardevice();
+
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].getIsOn(grd, groundNumber);
+			anm[i].checkIsOn();
+
+			for (int j = 0; j < groundNumber; j++) {
+				anm[i].knockGround(grd[j]);
 			}
-			else {
-				fclose(user_info);
-				return 0;
+
+			for (int j = i + 1; j < animalNumber; j++) {
+				anm[i].knockAnimal(&anm[j]);
 			}
 		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].changeSpeed();
+		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].move();
+		}
+
+		for (int i = 0; i < groundNumber; i++) {
+			grd[i].draw();
+		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].draw();
+		}
+
+		//Sleep(1);
+
+		FlushBatchDraw();
 	}
-	fclose(user_info);
-	return 2;
+
+	EndBatchDraw();
 }
+
+void testing() {
+	cleardevice();
+
+	int groundNumber, animalNumber;
+
+	groundNumber = 7;
+	animalNumber = 3;
+
+	Ground grd[7];
+	Animal anm[5];
+
+	grd[0] = Ground(0, 0, 10, 600, NULL);
+	grd[1] = Ground(990, 0, 1000, 600, NULL);
+	grd[2] = Ground(10, 0, 990, 10, NULL);
+	grd[3] = Ground(10, 590, 990, 600, NULL);
+	grd[4] = Ground(500, 100, 520, 550, NULL);
+	grd[5] = Ground(100, 400, 400, 410, NULL);
+	grd[6] = Ground(600, 400, 900, 410, NULL);
+
+	anm[0] = Animal(20, 50, 150, 3, 0, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL, (wchar_t*)L"./resources/birds/redbird1.jpeg", (wchar_t*)NULL);
+	anm[1] = Animal(20, 600, 200, -2, 0, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL, (wchar_t*)L"./resources/birds/redbird1.jpeg", (wchar_t*)NULL);
+	anm[2] = Animal(10, 550, 100, 2.5f, -1, 0, (wchar_t*)L"./resources/birds/redbird.jpeg", (wchar_t*)NULL, (wchar_t*)L"./resources/birds/redbird1.jpeg", (wchar_t*)NULL);
+
+
+	for (int i = 0; i < groundNumber; i++) {
+		grd[i].draw();
+	}
+
+	for (int i = 0; i < animalNumber; i++) {
+		anm[i].draw();
+	}
+
+	//while(1){}
+
+	BeginBatchDraw();
+
+	while (true) {
+		cleardevice();
+
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].getIsOn(grd, groundNumber);
+			anm[i].checkIsOn();
+
+			for (int j = 0; j < groundNumber; j++) {
+				anm[i].knockGround(grd[j]);
+			}
+
+			for (int j = i + 1; j < animalNumber; j++) {
+				anm[i].knockAnimal(&anm[j]);
+			}
+		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].changeSpeed();
+		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].move();
+		}
+
+		for (int i = 0; i < groundNumber; i++) {
+			grd[i].draw();
+		}
+
+		for (int i = 0; i < animalNumber; i++) {
+			anm[i].draw();
+		}
+
+		Sleep(1);
+
+		FlushBatchDraw();
+	}
+
+	EndBatchDraw();
+}
+
+
+int main() {
+
+	welcome();
+
+	//playing();
+
+	testing();
+	
+	return 0;
+}
+

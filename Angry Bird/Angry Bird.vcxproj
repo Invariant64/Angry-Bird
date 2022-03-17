@@ -142,22 +142,6 @@
     <ClCompile Include="Angry Bird.cpp">
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <ClCompile Include="Animals.cpp" />
-    <ClCompile Include="DrawObj.cpp" />
-    <ClCompile Include="Ground.cpp" />
-    <ClCompile Include="Object.cpp" />
-    <ClCompile Include="init.cpp" />
-    <ClCompile Include="RedBirds.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Animals.h" />
-    <ClInclude Include="DrawObj.h" />
-    <ClInclude Include="Ground.h" />
-    <ClInclude Include="head.h" />
-    <ClInclude Include="Object.h" />
-    <ClInclude Include="Knock.h" />
-    <ClInclude Include="RedBirds.h" />
-    <ClInclude Include="tools.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
